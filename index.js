@@ -1,11 +1,15 @@
 const axios = require('axios');
 const express = require('express');
 
-const { habrahabrParser } = require('./habrahabr-parser');
+const { ThreadPool } = require('./src/thread-pool');
+
+const { habrahabrParser } = require('./src/habrahabr-parser');
 
 const app = express();
 
 const PORT = process.env.PORT || 3000;
+
+const threadPool = new ThreadPool(3);
 
 app.get('/articles', (request, response) => {
   const requestConfig = {
@@ -16,19 +20,10 @@ app.get('/articles', (request, response) => {
 
   axios(requestConfig)
     .then((resp) => {
-      const firstArticleLinks = habrahabrParser.getFirstArticlesLinks(resp.data, 4);
-      const getFullArticleRequests = firstArticleLinks.map((link) => {
-        const requestConfig = {
-          method: 'get',
-          url: link,
-          responseType: 'text'
-        };
+      const firstArticleLinks = habrahabrParser.getFirstArticlesLinks(resp.data, 12);
+      const parseArticleJobs = firstArticleLinks.map((link) => threadPool.parseArticle(link));
 
-        return axios(requestConfig)
-          .then((resp) => habrahabrParser.parseArticle(resp.data));
-      });
-
-      return Promise.all(getFullArticleRequests);
+      return Promise.all(parseArticleJobs);
     })
     .then((articles) => response.json(articles));
 });
